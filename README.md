@@ -2,6 +2,7 @@
 
 **Intelligent Scientific PDF Reader & Knowledge Workspace for Bioinformatics and Life Sciences Researchers**
 
+[![CI](https://github.com/BurakBulut-sh/BioReader/actions/workflows/ci.yml/badge.svg)](https://github.com/BurakBulut-sh/BioReader/actions/workflows/ci.yml)
 [![Electron 35](https://img.shields.io/badge/Electron-35.0-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React 18](https://img.shields.io/badge/React-18.3-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite 6](https://img.shields.io/badge/Vite-6.1-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -12,21 +13,22 @@
 
 ## 🎯 Why I Built This
 
-Existing scientific note-taking tools often feel bloated with steep learning curves and heavy cloud dependencies. As a researcher, I recall papers through visual and spatial memory: remembering where key paragraphs, equations, and figures sit across columns and pages. 
+Existing scientific note-taking tools often feel bloated with steep learning curves and heavy cloud dependencies. As a researcher, I recall papers through visual and spatial memory: remembering where key paragraphs, tables, and figures sit across columns and pages.
 
-BioReader was built to provide a clean, local-first scientific workspace tailored to how the human brain actually processes complex literature. It eliminates cognitive friction by combining lightning-fast PDF rendering, structured semantic notes, automatic term detection, and instant exports.
+BioReader was built to provide a clean, local-first scientific workspace tailored to how the human brain actually processes complex literature. It eliminates cognitive friction by combining high-fidelity PDF rendering, structured semantic notes, automatic term detection, and instant exports.
 
 ---
 
 ## ✨ Core Features
 
-* **Visual-Spatial Reading:** High-fidelity PDF rendering with dual-page/single-page modes, zoom snapping, and layout persistence.
-* **Structured Annotation System:** Categorize thoughts into semantic types (Quick Note, Deep Note, Question, Critique, Insight) with custom highlight palettes.
-* **Inline Math & Equations:** Native KaTeX rendering for complex mathematical and statistical formulas directly inside your notes.
-* **Concept Mapping:** Interactive Cytoscape graph visualization to explore relationships between topics, genes, and literature notes.
-* **Built-in Biological Glossary:** Offline search across 2,000+ curated biological and bioinformatics definitions with instant term detection.
-* **Multi-Format Export Engine:** One-click export to Obsidian-ready Markdown, BibTeX citation files, Anki flashcard decks, and Word documents (.docx).
-* **Local-First & Private:** All data resides in a local SQLite database (`~/Documents/BioReader/bioreader.sqlite3`) with automated periodic backups. Zero cloud telemetry.
+* **Visual Systems Monograph Design:** Designed around an archival blueprint grid with warm stone palettes, editorial serif typography (Newsreader), and precision monospace metadata tags (JetBrains Mono).
+* **Reading Comfort Modes:** Seamless one-click toggling between Paper (bright warm paper), Sepia (parchment), and Dark (obsidian monograph) modes.
+* **Structured Research Notes:** Categorize thoughts into semantic types (Quick Note, Deep Note, Question, Critique, Insight) with archival index cards linked to exact manuscript coordinates.
+* **Real-Time Note Filtering & Search:** Instant text and category filtering directly within the notes panel.
+* **Built-in Biological Glossary:** Offline database of 2,000+ curated biological and bioinformatics definitions with automatic term detection on selection.
+* **Figures & Outline Drawers:** Fast access to extracted manuscript outlines (TOC) and figure captions.
+* **Multi-Format Export Engine:** One-click export to Markdown (.md), formatted academic citations (APA, BibTeX, Nature, Harvard, Chicago), and Anki flashcard decks.
+* **Local-First & Private:** All data resides in a local SQLite database with automated periodic backups. Zero cloud telemetry.
 
 ---
 
@@ -35,10 +37,11 @@ BioReader was built to provide a clean, local-first scientific workspace tailore
 ```mermaid
 flowchart TD
     subgraph UI ["Renderer Process (React 18 + Vite)"]
+        TB["Toolbar & Reading Mode Switcher"]
         PV["PDFViewerPanel (react-pdf)"]
-        NP["NotesPanel (TipTap Editor)"]
-        CG["ConceptGraph (Cytoscape)"]
-        TM["TermDetector & Glossary"]
+        NP["Research Notes Panel (Archival Cards)"]
+        QB["QuickNoteBubble & TermDetector"]
+        VB["VocabularyDrawer & Glossary Bank"]
     end
 
     subgraph Bridge ["Preload Context Bridge"]
