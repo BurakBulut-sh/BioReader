@@ -96,7 +96,8 @@ test('Keyboard shortcut parser handles modifiers correctly', () => {
   const formatted = formatShortcut('Mod+Shift+N');
   assert.ok((formatted.includes('⇧') || formatted.includes('Shift')) && formatted.includes('N'));
 
-  const mockEvent = { metaKey: true, ctrlKey: false, shiftKey: true, altKey: false, key: 'N' };
+  const isMac = typeof navigator !== 'undefined' && navigator.platform ? navigator.platform.includes('Mac') : true;
+  const mockEvent = { metaKey: isMac, ctrlKey: !isMac, shiftKey: true, altKey: false, key: 'N' };
   assert.equal(shortcutMatches(mockEvent, 'Mod+Shift+N'), true);
 });
 
