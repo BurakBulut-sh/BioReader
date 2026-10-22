@@ -41,18 +41,20 @@ function normalizePdfBytes(payload) {
 
 export default function App() {
   const rootRef = useRef(null);
-  
-  // Core state
+
+  // Core settings & database state
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [dbPaths, setDbPaths] = useState({});
   const [backups, setBackups] = useState([]);
   const [appInitialized, setAppInitialized] = useState(false);
 
-  // Paper state
+  // Active Paper state
   const [currentPaper, setCurrentPaper] = useState(null);
   const [currentFilePath, setCurrentFilePath] = useState('');
   const [currentPdfData, setCurrentPdfData] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [numPages, setNumPages] = useState(0);
 
   // Content state
   const [terms, setTerms] = useState([]);
@@ -61,17 +63,21 @@ export default function App() {
   const [highlights, setHighlights] = useState([]);
   const [vocabTerms, setVocabTerms] = useState([]);
 
-  // UI state
+  // UI / Panel state
   const [selection, setSelection] = useState(null);
   const [quickNoteState, setQuickNoteState] = useState({ open: false, type: 'quick' });
-  const [highlightPaletteOpen, setHighlightPaletteOpen] = useState(false);
   const [selectionTerms, setSelectionTerms] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [citationOpen, setCitationOpen] = useState(false);
   const [figuresOpen, setFiguresOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
   const [vocabDrawerOpen, setVocabDrawerOpen] = useState(false);
   const [showNotesPanel, setShowNotesPanel] = useState(true);
   const [showHighlights, setShowHighlights] = useState(true);
+
+  // Notes filtering and search state
+  const [noteSearchQuery, setNoteSearchQuery] = useState('');
+  const [noteTypeFilter, setNoteTypeFilter] = useState('all');
 
   const termIndex = buildTermIndex(terms);
 
@@ -90,8 +96,8 @@ export default function App() {
     escape: {
       handler: () => {
         setSettingsOpen(false);
-        setHighlightPaletteOpen(false);
         setFiguresOpen(false);
+        setTocOpen(false);
         setVocabDrawerOpen(false);
         setSelectedTerm(null);
         setQuickNoteState(s => ({ ...s, open: false }));
@@ -156,7 +162,6 @@ export default function App() {
       window.dispatchEvent(new CustomEvent('pdf:focus-search'));
     });
 
-    // Listen for open PDF events from UI
     const handleOpenDialog = () => openPdf();
     window.addEventListener('pdf:open-dialog', handleOpenDialog);
 
@@ -250,26 +255,52 @@ export default function App() {
     }
   }
 
+  // Load sample test study
+  async function loadSampleStudy() {
+    try {
+      const basePath = dbPaths.appPath || '.';
+      const candidatePaths = [
+        `${basePath}/fixtures/chironomus_mutation_study.pdf`,
+        `${basePath}/chironomus_mutation_study.pdf`,
+        `${basePath}/article.pdf`,
+      ];
+
+      for (const p of candidatePaths) {
+        try {
+          const loaded = await loadPdfFromPath(p);
+          if (loaded) {
+            addToast('Study Loaded', `${basename(p)} loaded into workspace`, 'success');
+            return;
+          }
+        } catch {
+          // try next
+        }
+      }
+      openPdf();
+    } catch (err) {
+      console.error('Failed to load sample study', err);
+      openPdf();
+    }
+  }
+
   // Note management
   function triggerNote(noteType) {
     if (!selection?.text) {
       addToast('No selected text', 'Select text in the PDF first.', 'warning');
       return;
     }
-    setHighlightPaletteOpen(false);
     setQuickNoteState({ open: true, type: noteType });
   }
 
-  async function saveQuickNote(text) {
+  async function saveQuickNote(text, overriddenType) {
     if (!currentPaper || !selection) {
       addToast('Cannot save note', 'Open a paper and select text first.', 'error');
       return;
     }
 
-    let noteType = quickNoteState.type || 'quick';
+    let noteType = overriddenType || quickNoteState.type || 'quick';
     let finalText = text || '(No note text entered)';
 
-    // Auto-categorize based on prefix
     if (finalText.startsWith('?')) {
       noteType = 'question';
       finalText = finalText.slice(1).trim() || finalText;
@@ -292,19 +323,18 @@ export default function App() {
 
     setNotes(current => [note, ...current]);
     setQuickNoteState(s => ({ ...s, open: false }));
-    
-    // Clear selection after saving
     setSelection(null);
-    setHighlightPaletteOpen(false);
+    addToast('Note Saved', `Added to Page ${selection.page}`, 'success');
   }
 
   async function deleteNote(noteId) {
     const note = notes.find(n => n.id === noteId);
     if (!note) return;
-    
+
     if (window.confirm('Delete this note?')) {
       await dbClient.notes.delete(noteId);
       setNotes(current => current.filter(n => n.id !== noteId));
+      addToast('Note deleted', '', 'info');
     }
   }
 
@@ -317,11 +347,11 @@ export default function App() {
     try {
       const markdown = generateNotesMarkdown(currentPaper, notes);
       const fileName = `${currentPaper.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.md`;
-      
+
       const savedPath = await systemClient.saveFile({
         content: markdown,
         defaultPath: fileName,
-        filters: [{ name: 'Markdown', extensions: ['md'] }]
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
       });
 
       if (savedPath) {
@@ -332,51 +362,10 @@ export default function App() {
     }
   }
 
-  // Handle note click - scroll to page
   function handleNoteClick(note) {
-    console.log('[App] Note clicked, scrolling to page:', note.page);
-    window.dispatchEvent(new CustomEvent('pdf:scroll-to-page', { 
-      detail: { page: note.page, highlightedText: note.highlighted_text } 
+    window.dispatchEvent(new CustomEvent('pdf:scroll-to-page', {
+      detail: { page: note.page, highlightedText: note.highlighted_text },
     }));
-  }
-
-  // Highlight management
-  async function createHighlight(color) {
-    if (!selection || !currentPaper) return;
-
-    const highlight = await dbClient.highlights.create({
-      paper_id: currentPaper.id,
-      page: selection.page,
-      selected_text: selection.text,
-      color,
-      opacity: settings.highlightOpacity,
-      rects: [{ x: selection.rect.x, y: selection.rect.y }],
-    });
-
-    // Create linked note
-    const linkedNote = await dbClient.notes.create({
-      paper_id: currentPaper.id,
-      page: selection.page,
-      section: detectSectionFromSelection(selection.text),
-      type: 'quick',
-      note_text: 'Highlighted excerpt',
-      highlighted_text: selection.text,
-      highlight_color: color,
-      paper_citation: `${currentPaper.title.split(' ')[0]} et al.`,
-      tags: [],
-      links: [],
-    });
-
-    const persistedHighlight = await dbClient.highlights.update({
-      id: highlight.id,
-      color: highlight.color,
-      opacity: highlight.opacity,
-      associated_note_id: linkedNote.id,
-    });
-
-    setHighlights(current => [persistedHighlight, ...current]);
-    setNotes(current => [linkedNote, ...current]);
-    setHighlightPaletteOpen(false);
   }
 
   // Dictionary / Terms
@@ -391,7 +380,7 @@ export default function App() {
       }
 
       if (!term) {
-        addToast('No glossary match', `No term found for "${name.trim()}"`, 'warning');
+        addToast('No glossary match', `No entry found for "${name.trim()}"`, 'warning');
         return;
       }
 
@@ -419,32 +408,27 @@ export default function App() {
       const newTerm = await dbClient.vocab.create({
         ...term,
         status: 'New',
-        workflow: 'General'
+        workflow: 'General',
       });
       setVocabTerms(prev => [newTerm, ...prev]);
-      addToast('Saved to Library', `"${term.name}" added.`, 'success');
+      addToast('Saved to Glossary', `"${term.name}" bookmarked.`, 'success');
       setSelectedTerm(null);
     } catch (error) {
       addToast('Failed to save term', error.message, 'error');
     }
   }
 
-  // Selection handler - now directly opens note popup
   function onPdfSelection(payload) {
     setSelection(payload);
     setSelectionTerms([]);
-    
-    // Open note popup immediately instead of highlight palette
     setQuickNoteState({ open: true, type: 'quick' });
 
-    // Still detect terms for potential dictionary lookup
     if (payload?.text && termIndex) {
       const detected = detectTermsInText(payload.text, termIndex, 'other');
       setSelectionTerms(detected.filter(t => !t.isPotential));
     }
   }
 
-  // Settings
   function updateSetting(key, value) {
     setSettings(current => ({ ...current, [key]: value }));
     dbClient.prefs.set(key, value);
@@ -456,7 +440,6 @@ export default function App() {
     setBackups(list);
   }
 
-  // Handle paper metadata from PDF
   async function handlePaperMetadata(metadata) {
     if (!currentFilePath || !currentPaper) return;
 
@@ -477,24 +460,48 @@ export default function App() {
   // Filter notes for current paper
   const currentPaperNotes = notes.filter(n => n.paper_id === currentPaper?.id);
 
+  const filteredPaperNotes = currentPaperNotes.filter(note => {
+    if (noteTypeFilter !== 'all' && note.type !== noteTypeFilter) return false;
+    if (noteSearchQuery.trim()) {
+      const q = noteSearchQuery.toLowerCase();
+      const matchText = (note.note_text || '').toLowerCase().includes(q);
+      const matchQuote = (note.highlighted_text || '').toLowerCase().includes(q);
+      return matchText || matchQuote;
+    }
+    return true;
+  });
+
+  const noteCategories = [
+    { id: 'all', label: 'All' },
+    { id: 'quick', label: 'Quick' },
+    { id: 'deep', label: 'Deep' },
+    { id: 'question', label: 'Question' },
+    { id: 'critique', label: 'Critique' },
+    { id: 'insight', label: 'Insight' },
+  ];
+
   return (
-    <div className="app-root" ref={rootRef}>
+    <div className="app-root" ref={rootRef} data-theme={settings.theme || 'bright'}>
       <Toolbar
         paperTitle={currentPaper?.title || basename(currentFilePath)}
+        currentPage={currentPage}
+        numPages={numPages}
         onOpenPdf={openPdf}
         onOpenSettings={() => setSettingsOpen(true)}
         currentTheme={settings.theme || 'bright'}
         onToggleTheme={(theme) => updateSetting('theme', theme)}
         onCitePaper={() => currentPaper && setCitationOpen(true)}
         onToggleFigures={() => setFiguresOpen(v => !v)}
+        onToggleTOC={() => setTocOpen(v => !v)}
         onOpenVocab={() => setVocabDrawerOpen(true)}
         onToggleNotes={() => setShowNotesPanel(v => !v)}
         notesCount={currentPaperNotes.length}
+        showNotesPanel={showNotesPanel}
       />
 
-      <div className="main-layout" data-theme={settings.theme || 'bright'}>
-        {/* Left side - PDF Viewer */}
-        <div className={`pdf-section ${showNotesPanel ? 'with-notes' : ''}`}>
+      <div className="main-layout">
+        {/* Left: PDF Viewer */}
+        <div className={`pdf-section ${showNotesPanel && currentPaper ? 'with-notes' : ''}`}>
           <PDFViewerPanel
             filePath={currentFilePath}
             fileData={currentPdfData}
@@ -503,12 +510,14 @@ export default function App() {
             notes={notes}
             onPaperMetadata={handlePaperMetadata}
             onProgressChange={async (pageNum, total) => {
+              setCurrentPage(pageNum);
+              setNumPages(total);
               if (!currentPaper?.id) return;
               try {
                 await dbClient.papers.updateProgress({
                   id: currentPaper.id,
                   progress: pageNum / total,
-                  workflowType: 'other'
+                  workflowType: 'other',
                 });
               } catch (e) {
                 console.error('Progress update failed', e);
@@ -517,62 +526,123 @@ export default function App() {
             onSelection={onPdfSelection}
             figuresOpen={figuresOpen}
             onCloseFigures={() => setFiguresOpen(false)}
+            onToggleFigures={() => setFiguresOpen(v => !v)}
+            tocOpen={tocOpen}
+            onCloseTOC={() => setTocOpen(false)}
+            onToggleTOC={() => setTocOpen(v => !v)}
+            onLoadSample={loadSampleStudy}
           />
         </div>
 
-        {/* Right side - Notes Panel */}
+        {/* Right: Monograph Research Notes Panel */}
         {showNotesPanel && currentPaper && (
-          <div className="notes-section">
+          <aside className="notes-section" aria-label="Research Notes">
             <div className="notes-panel-header">
-              <h3>Notes <span className="notes-count">({currentPaperNotes.length})</span></h3>
+              <div className="header-left">
+                <span className="section-index-tag">[ 01 / NOTES ]</span>
+                <span className="notes-count-badge">({currentPaperNotes.length})</span>
+              </div>
               <div className="notes-actions">
                 {currentPaperNotes.length > 0 && (
-                  <button className="btn-ghost" onClick={exportNotes} title="Export">
-                    Export
+                  <button className="btn-export-notes" onClick={exportNotes} title="Export Notes as Markdown (.md)">
+                    Export .md
                   </button>
                 )}
-                <button className="btn-ghost" onClick={() => setShowNotesPanel(false)} title="Close">
+                <button
+                  className="btn-close-notes"
+                  onClick={() => setShowNotesPanel(false)}
+                  title="Close notes panel"
+                  aria-label="Close notes panel"
+                >
                   ✕
                 </button>
               </div>
             </div>
-            
+
+            {/* Note Search & Category Filters */}
+            <div className="notes-filter-bar">
+              <div className="note-search-wrapper">
+                <input
+                  type="text"
+                  placeholder="Filter notes..."
+                  value={noteSearchQuery}
+                  onChange={(e) => setNoteSearchQuery(e.target.value)}
+                  className="note-search-input"
+                />
+                {noteSearchQuery && (
+                  <button className="clear-note-search" onClick={() => setNoteSearchQuery('')}>
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="note-category-tabs" role="tablist">
+                {noteCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    className={`cat-tab ${noteTypeFilter === cat.id ? 'active' : ''}`}
+                    onClick={() => setNoteTypeFilter(cat.id)}
+                    role="tab"
+                    aria-selected={noteTypeFilter === cat.id}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Note Cards List */}
             <div className="notes-list">
-              {currentPaperNotes.length === 0 ? (
+              {filteredPaperNotes.length === 0 ? (
                 <div className="notes-empty">
-                  <div className="empty-icon">✏️</div>
-                  <p>No notes yet</p>
-                  <p className="hint">Select text and type N to add a note</p>
+                  <div className="empty-icon">📝</div>
+                  <h4 className="empty-title">
+                    {noteSearchQuery || noteTypeFilter !== 'all' ? 'No matching notes' : 'No research notes yet'}
+                  </h4>
+                  <p className="empty-hint">
+                    Select text in the manuscript to create a note, or press <strong>N</strong> (Quick), <strong>D</strong> (Deep), <strong>Q</strong> (Question), <strong>C</strong> (Critique), or <strong>I</strong> (Insight).
+                  </p>
                 </div>
               ) : (
-                currentPaperNotes.map(note => (
-                  <div 
-                    key={note.id} 
+                filteredPaperNotes.map((note) => (
+                  <article
+                    key={note.id}
                     className={`note-card ${note.type}`}
                     onClick={() => handleNoteClick(note)}
+                    title="Click to jump to page in manuscript"
                   >
-                    <div className="note-header">
-                      <span className="note-page">Page {note.page}</span>
-                      <span className="note-type">{note.type}</span>
-                      <button 
-                        className="note-delete" 
-                        onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
-                        title="Delete"
+                    <header className="note-card-top">
+                      <span className="note-page-tag">
+                        PAGE {String(note.page).padStart(2, '0')}
+                      </span>
+                      <span className={`note-type-badge ${note.type}`}>
+                        {note.type.toUpperCase()}
+                      </span>
+                      <button
+                        className="note-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteNote(note.id);
+                        }}
+                        title="Delete note"
+                        aria-label="Delete note"
                       >
                         ×
                       </button>
-                    </div>
+                    </header>
+
                     {note.highlighted_text && (
-                      <div className="note-quote">
-                        "{note.highlighted_text.slice(0, 100)}{note.highlighted_text.length > 100 ? '...' : ''}"
-                      </div>
+                      <blockquote className="note-card-quote">
+                        "{note.highlighted_text.slice(0, 150)}{note.highlighted_text.length > 150 ? '...' : ''}"
+                      </blockquote>
                     )}
-                    <div className="note-text">{note.note_text}</div>
-                  </div>
+
+                    <div className="note-card-body">{note.note_text}</div>
+                  </article>
                 ))
               )}
             </div>
-          </div>
+          </aside>
         )}
       </div>
 
@@ -602,23 +672,10 @@ export default function App() {
           position={selection?.rect}
           noteType={quickNoteState.type}
           selectedText={selection?.text}
+          detectedTerms={selectionTerms}
+          onTermClick={lookupTerm}
           onSave={saveQuickNote}
           onCancel={() => setQuickNoteState(s => ({ ...s, open: false }))}
-        />
-      )}
-
-      {highlightPaletteOpen && (
-        <HighlightPalette
-          open={highlightPaletteOpen}
-          position={selection?.rect}
-          detectedTerms={selectionTerms}
-          onSelectColor={createHighlight}
-          onAddNote={() => triggerNote('quick')}
-          onTermClick={lookupTerm}
-          onClose={() => {
-            setHighlightPaletteOpen(false);
-            setSelectionTerms([]);
-          }}
         />
       )}
 

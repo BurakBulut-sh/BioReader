@@ -161,7 +161,7 @@ function createWindow() {
     titleBarStyle: 'hidden', // Native Mac traffic lights
     trafficLightPosition: { x: 16, y: 16 }, // Align nicely with the 48px toolbar
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -170,12 +170,17 @@ function createWindow() {
 
   mainWindowState.manage(mainWindow);
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+  const distPath = path.join(app.getAppPath(), 'dist-react', 'index.html');
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
-  if (!app.isPackaged) {
+  if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
+  } else if (!app.isPackaged && process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173');
+  } else if (fs.existsSync(distPath)) {
+    mainWindow.loadFile(distPath);
   } else {
-    mainWindow.loadFile(path.join(app.getAppPath(), 'dist-react', 'index.html'));
+    mainWindow.loadURL('http://localhost:5173');
   }
 
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
