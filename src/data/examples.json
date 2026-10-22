@@ -1,0 +1,23 @@
+[
+  {
+    "term": "False Discovery Rate",
+    "paper": "Benjamini Y, Hochberg Y (1995)",
+    "doi": "https://doi.org/10.1111/j.2517-6161.1995.tb02031.x",
+    "context": "Controlling the false discovery rate offers greater power than family-wise corrections in multiple testing scenarios.",
+    "significance": "Established FDR control as a practical default in high-dimensional analyses."
+  },
+  {
+    "term": "de Bruijn Graph",
+    "paper": "Pevzner et al. (2001)",
+    "doi": "https://doi.org/10.1073/pnas.171285098",
+    "context": "Eulerian path formulations with de Bruijn graphs made large-scale short-read assembly tractable.",
+    "significance": "Enabled scalable assembly with graph-based overlap abstractions."
+  },
+  {
+    "term": "RNA-seq Differential Expression",
+    "paper": "Love et al. (2014)",
+    "doi": "https://doi.org/10.1186/s13059-014-0550-8",
+    "context": "DESeq2 shrinkage estimators stabilize fold-change and dispersion estimates for robust gene-level testing.",
+    "significance": "Became a standard framework for RNA-seq differential expression."
+  }
+]
